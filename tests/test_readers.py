@@ -393,4 +393,115 @@ class TestJsonReader(TempDirTestCase):
         with self.assertRaises(FileNotFoundError):
             read_json_records(self.tmp / "missing.json", {})
  
+ @unittest.skipUnless(HAS_PYARROW, "pyarrow is not installed")
+class TestParquetReader(TempDirTestCase):
+    """String-typed parquet columns mapped to canonical names."""
  
+    CONFIG = {"column_mappings": {"parquet": {
+        "COUNTRY": "country", "CONTINENT": "continent", "YEAR": "year",
+        "LIFE_EXP": "lifeExp", "POPULATION": "pop", "GDP_PER_CAPITA": "gdpPercap"}}}
+ 
+    def test_reads_and_maps(self) -> None:
+        raw = pd.DataFrame({
+            "COUNTRY": ["Chad", "Japan"], "CONTINENT": ["Africa", "Asia"],
+            "YEAR": ["1952", "2007"], "LIFE_EXP": ["38.1", "82.6"],
+            "POPULATION": ["3000000", "127467972"], "GDP_PER_CAPITA": ["1100", "31656.1"],
+        })
+        path = self.tmp / "a.parquet"
+        raw.to_parquet(path)
+        df = read_parquet_records(path, self.CONFIG)
+        self.assertEqual(list(df.columns), EXPECTED_COLUMNS)
+        self.assertEqual(df["year"].iloc[0], "1952")  # not cast
+        self.assertEqual(list(df[SOURCE_RECORD_COLUMN]), [1, 2])
+ 
+    def test_corrupt_and_missing(self) -> None:
+        bad = self.tmp / "bad.parquet"
+        bad.write_bytes(b"not parquet")
+        with self.assertRaises(InvalidFileError):
+            read_parquet_records(bad, {})
+        with self.assertRaises(FileNotFoundError):
+            read_parquet_records(self.tmp / "missing.parquet", {})
+ 
+ 
+class TestManifestLayout(TempDirTestCase):
+    """A manifest entry overrides formats / mappings for its own file only."""
+ 
+    def test_entry_overrides_global_settings(self) -> None:
+        text = "# c\nA,B,C,D,E,F\nChad,Africa,1952,38.1,3,4\n"
+        path = self.write_csv("listed.csv", text.replace(",", ";"))
+        cfg = {
+            "formats": {"csv": {"encoding": "utf-8", "delimiter": ","}},  # would break listed.csv
+            "files": [{
+                "file": "listed.csv", "encoding": "cp1252", "separator": ";",
+                "comment_prefix": "#",
+                "source_to_canonical": dict(zip("ABCDEF", CANONICAL_COLUMNS)),
+            }],
+        }
+        df = read_csv_records(path, cfg)
+        self.assertEqual(df["country"].iloc[0], "Chad")
+ 
+    def test_unlisted_file_uses_global_formats(self) -> None:
+        text = "country,continent,year,lifeExp,pop,gdpPercap\nChad,Africa,1952,1,2,3\n"
+        path = self.write_csv("other.csv", text, "utf-8")
+        cfg = {
+            "formats": {"csv": {"encoding": "utf-8", "delimiter": ",", "comment_prefix": ""}},
+            "files": [{"file": "listed.csv", "separator": ";"}],
+        }
+        self.assertEqual(len(read_csv_records(path, cfg)), 1)
+ 
+    def test_bad_source_to_canonical(self) -> None:
+        path = self.write_csv("listed.csv", f"{HEADER}\nChad;Africa;1952;1;2;3\n")
+        for value in ({"x": "notAColumn"}, ["x"]):
+            with self.subTest(value=value):
+                cfg = {"files": [{"file": "listed.csv", "source_to_canonical": value}]}
+                with self.assertRaises(ConfigError):
+                    read_csv_records(path, cfg)
+ 
+ 
+class TestDispatch(TempDirTestCase):
+    """read_file_by_format and register_reader."""
+ 
+    def setUp(self) -> None:
+        super().setUp()
+        patcher = mock.patch.dict(rce._READERS, clear=False)  # restored after each test
+        patcher.start()
+        self.addCleanup(patcher.stop)
+ 
+    def test_dispatch_by_extension(self) -> None:
+        csv_path = self.write_csv("a.csv", CSV_TEXT)
+        xlsx_path = self.write_xlsx("a.xlsx", {"observations": [XLSX_HEADER, XLSX_ROWS[0]]})
+        json_path = self.write_json("a.json", {"records": [json_record()]})
+        self.assertEqual(len(read_file_by_format(csv_path, CSV_CONFIG)), 4)
+        self.assertEqual(len(read_file_by_format(xlsx_path, XLSX_CONFIG)), 1)
+        self.assertEqual(len(read_file_by_format(json_path, JSON_CONFIG)), 1)
+ 
+    def test_extension_case_insensitive(self) -> None:
+        upper = self.write_csv("UPPER.CSV", CSV_TEXT)
+        self.assertEqual(len(read_file_by_format(upper, CSV_CONFIG)), 4)
+ 
+    def test_unsupported_extensions(self) -> None:
+        for name in ("a.txt", "a.docx", "noextension"):
+            with self.subTest(name=name):
+                path = self.tmp / name
+                path.write_text("x", encoding="utf-8")
+                with self.assertRaisesRegex(UnsupportedFormatError, "Unsupported file extension"):
+                    read_file_by_format(path, {})
+ 
+    def test_missing_file(self) -> None:
+        with self.assertRaises(FileNotFoundError):
+            read_file_by_format(self.tmp / "missing.csv", {})
+ 
+    def test_unregistered_supported_extension(self) -> None:
+        del rce._READERS[".json"]
+        path = self.write_json("a.json", {"records": []})
+        with self.assertRaisesRegex(UnsupportedFormatError, "No reader registered"):
+            read_file_by_format(path, {})
+ 
+    def test_register_reader(self) -> None:
+        register_reader(".JSON", lambda p, c: pd.DataFrame({"replaced": [True]}))
+        path = self.write_json("a.json", {"records": []})
+        self.assertIn("replaced", read_file_by_format(path, {}).columns)
+ 
+    def test_register_reader_rejects_unknown_extension(self) -> None:
+        with self.assertRaises(ValueError):
+            register_reader(".txt", lambda p, c: pd.DataFrame())
