@@ -77,7 +77,7 @@ def run_pipeline(config_path: str = "config.json") -> int:
     )
     step_counter += 1
     
-# -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # 2. INGESTION & VALIDATION PHASE
     # -------------------------------------------------------------------------
     files_to_process = []
@@ -184,3 +184,46 @@ def run_pipeline(config_path: str = "config.json") -> int:
     step_counter += 1
 
     print(f"    Total Canonical Dataset: {len(canonical_df)} rows")
+
+# -------------------------------------------------------------------------
+    # 4. EXPORT CANONICAL FORMATS & ROUND-TRIP VERIFICATION
+    # -------------------------------------------------------------------------
+    print(f"\n[+] Exporting canonical formats to staging ('{staging_dir}')...")
+    export_canonical_formats(canonical_df, staging_dir)
+    publish_staging_to_output(staging_dir, output_dir)
+
+    print("[+] Running 1e-8 round-trip verification...")
+    all_passed, roundtrip_checks = reload_and_compare_exports(canonical_df, staging_dir, abs_tol=1e-8)
+    validation_master_list.extend(roundtrip_checks)
+
+    # Four format agreement check
+    reloaded_tables = {
+        "csv": pd.read_csv(output_dir / "canonical.csv"),
+        "xlsx": pd.read_excel(output_dir / "canonical.xlsx", sheet_name="observations"),
+        "json": pd.read_json(output_dir / "canonical.json"),
+        "parquet": pd.read_parquet(output_dir / "canonical.parquet"),
+    }
+    _, agreement_checks = verify_four_format_agreement(reloaded_tables)
+    validation_master_list.extend(agreement_checks)
+
+    # -------------------------------------------------------------------------
+    # 5. RUN ANALYTICS & SAVE ANALYTICAL TABLES
+    # -------------------------------------------------------------------------
+    print("\n[+] Running Analytics & generating analytical tables...")
+    analytics_output = run_all_analytics(canonical_df, reporting_year=2007, audit_log=audit_log)
+    validation_master_list.extend(analytics_output["validation_checks"])
+
+    # Export asia_selected_year.csv
+    asia_csv_path = output_dir / "asia_selected_year.csv"
+    analytics_output["asia_selected_year"].to_csv(asia_csv_path, index=False)
+    print(f"    --> Saved: {asia_csv_path}")
+
+    # Export country_history.csv
+    ph_csv_path = output_dir / "country_history.csv"
+    analytics_output["country_history"].to_csv(ph_csv_path, index=False)
+    print(f"    --> Saved: {ph_csv_path}")
+
+    # Export population_index.csv
+    pop_idx_csv_path = output_dir / "population_index.csv"
+    analytics_output["population_index"].to_csv(pop_idx_csv_path, index=False)
+    print(f"    --> Saved: {pop_idx_csv_path}")
