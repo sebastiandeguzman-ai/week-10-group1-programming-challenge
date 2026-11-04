@@ -227,3 +227,31 @@ def run_pipeline(config_path: str = "config.json") -> int:
     pop_idx_csv_path = output_dir / "population_index.csv"
     analytics_output["population_index"].to_csv(pop_idx_csv_path, index=False)
     print(f"    --> Saved: {pop_idx_csv_path}")
+    
+    # -------------------------------------------------------------------------
+    # 6. WRITE VALIDATION.CSV & AUDIT_LOG.CSV
+    # -------------------------------------------------------------------------
+    print("\n[+] Generating validation.csv and audit_log.csv...")
+
+    # Build validation.csv
+    val_df = pd.DataFrame(validation_master_list)
+    val_df = val_df[["check", "expected", "actual", "tolerance", "pass"]]
+    val_csv_path = output_dir / "validation.csv"
+    val_df.to_csv(val_csv_path, index=False)
+    print(f"    --> Saved: {val_csv_path}")
+
+    # Build audit_log.csv
+    audit_df = pd.DataFrame(audit_log)
+    audit_df = audit_df[["step", "source_file", "operation", "rule", "rows_before", "rows_after"]]
+    audit_csv_path = output_dir / "audit_log.csv"
+    audit_df.to_csv(audit_csv_path, index=False)
+    print(f"    --> Saved: {audit_csv_path}")
+
+    print("\n" + "=" * 60)
+    print("PIPELINE EXECUTION COMPLETED SUCCESSFULLY!")
+    print("=" * 60)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_pipeline())
