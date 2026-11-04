@@ -1,0 +1,42 @@
+{
+  "dataset": "Gapminder historical teaching snapshot with deliberately appended defects",
+  "data_dir": "data",
+  "staging_dir": "staging",
+  "output_dir": "outputs",
+  "reporting_year": 2007,
+  "canonical_columns": ["country", "continent", "year", "lifeExp", "pop", "gdpPercap"],
+  "allowed_continents": ["Africa", "Americas", "Asia", "Europe", "Oceania"],
+  "allowed_years": [1952, 1957, 1962, 1967, 1972, 1977, 1982, 1987, 1992, 1997, 2002, 2007],
+  "column_mappings": {
+    "CountryName": "country",
+    "country_name": "country",
+    "identity.country": "country",
+    "COUNTRY": "country",
+    "ContinentName": "continent",
+    "continent_name": "continent",
+    "identity.continent": "continent",
+    "CONTINENT": "continent",
+    "ObservationYear": "year",
+    "observation_year": "year",
+    "identity.year": "year",
+    "YEAR": "year",
+    "LifeYears": "lifeExp",
+    "life_expectancy": "lifeExp",
+    "measures.lifeExp": "lifeExp",
+    "LIFE_EXP": "lifeExp",
+    "PopulationPersons": "pop",
+    "population": "pop",
+    "measures.pop": "pop",
+    "POPULATION": "pop",
+    "GDPPerPerson": "gdpPercap",
+    "gdp_per_capita": "gdpPercap",
+    "measures.gdpPercap": "gdpPercap",
+    "GDP_PER_CAPITA": "gdpPercap"
+  },
+  "files": {
+    "csv": "country_records.csv",
+    "xlsx": "country_records.xlsx",
+    "json": "country_records.json",
+    "parquet": "country_records.parquet"
+  }
+}
