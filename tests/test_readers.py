@@ -10,11 +10,10 @@ from unittest import mock
 import pandas as pd
 from openpyxl import Workbook
  
-# Point to the root folder where 'src' lives
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
  
-from src import readers_csv_excel as rce
-from src.readers_csv_excel import (
+from src import readers as rce
+from src.readers import (
     CANONICAL_COLUMNS,
     SOURCE_RECORD_COLUMN,
     ConfigError,
@@ -39,6 +38,9 @@ except ImportError:
     HAS_PYARROW = False
  
 EXPECTED_COLUMNS = list(CANONICAL_COLUMNS) + [SOURCE_RECORD_COLUMN]
+DATA_DIR = Path(
+    os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")
+)
 HEADER = "country;continent;year;lifeExp;pop;gdpPercap"
  
 CSV_TEXT = (
@@ -82,8 +84,6 @@ def json_record(country="Chad", year=1952):
  
  
 class TempDirTestCase(unittest.TestCase):
-    """Gives each test a fresh temporary folder and small file writers."""
- 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -110,9 +110,8 @@ class TempDirTestCase(unittest.TestCase):
         path.write_text(json.dumps(payload), encoding="utf-8")
         return path
  
- 
+ # config and validation----------------------
 class TestConfig(TempDirTestCase):
-    """load_config, get_input_path and config validation."""
  
     def test_load_config_adds_config_dir(self) -> None:
         path = self.tmp / "config.json"
@@ -182,8 +181,6 @@ class TestConfig(TempDirTestCase):
  
  
 class TestCsvReader(TempDirTestCase):
-    """Comment stripping, mapping, source_record, uncast strings, errors."""
- 
     def test_sample_file(self) -> None:
         df = read_csv_records(self.write_csv("s.csv", CSV_TEXT), CSV_CONFIG)
         self.assertEqual(list(df.columns), EXPECTED_COLUMNS)
@@ -340,9 +337,9 @@ class TestExcelReader(TempDirTestCase):
         with self.assertRaises(FileNotFoundError):
             read_excel_records(self.tmp / "missing.xlsx", {})
  
- 
+ # nested and errors----------------------
 class TestJsonReader(TempDirTestCase):
-    """Nested identity/measures records, record_path, errors."""
+   
  
     def test_nested_records_flattened_and_mapped(self) -> None:
         payload = {"metadata": {"note": "not a record"},
@@ -393,9 +390,9 @@ class TestJsonReader(TempDirTestCase):
         with self.assertRaises(FileNotFoundError):
             read_json_records(self.tmp / "missing.json", {})
  
- @unittest.skipUnless(HAS_PYARROW, "pyarrow is not installed")
+@unittest.skipUnless(HAS_PYARROW, "pyarrow is not installed")
 class TestParquetReader(TempDirTestCase):
-    """String-typed parquet columns mapped to canonical names."""
+   #parquet-------------
  
     CONFIG = {"column_mappings": {"parquet": {
         "COUNTRY": "country", "CONTINENT": "continent", "YEAR": "year",
@@ -424,13 +421,11 @@ class TestParquetReader(TempDirTestCase):
  
  
 class TestManifestLayout(TempDirTestCase):
-    """A manifest entry overrides formats / mappings for its own file only."""
- 
     def test_entry_overrides_global_settings(self) -> None:
         text = "# c\nA,B,C,D,E,F\nChad,Africa,1952,38.1,3,4\n"
         path = self.write_csv("listed.csv", text.replace(",", ";"))
         cfg = {
-            "formats": {"csv": {"encoding": "utf-8", "delimiter": ","}},  # would break listed.csv
+            "formats": {"csv": {"encoding": "utf-8", "delimiter": ","}},  #break listed.csv !!!-
             "files": [{
                 "file": "listed.csv", "encoding": "cp1252", "separator": ";",
                 "comment_prefix": "#",
@@ -457,9 +452,8 @@ class TestManifestLayout(TempDirTestCase):
                 with self.assertRaises(ConfigError):
                     read_csv_records(path, cfg)
  
- 
+ # read file ----------------------
 class TestDispatch(TempDirTestCase):
-    """read_file_by_format and register_reader."""
  
     def setUp(self) -> None:
         super().setUp()
@@ -505,3 +499,45 @@ class TestDispatch(TempDirTestCase):
     def test_register_reader_rejects_unknown_extension(self) -> None:
         with self.assertRaises(ValueError):
             register_reader(".txt", lambda p, c: pd.DataFrame())
+
+@unittest.skipUnless((DATA_DIR / "manifest.json").is_file(), "manifest.json not found in DATA_DIR")
+class TestRealFiles(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.config = load_config(DATA_DIR / "manifest.json")
+        cls.config["formats"] = {"csv": {"encoding": "utf-8", "delimiter": ",", "comment_prefix": ""}}
+ 
+    def test_each_manifest_file_has_expected_raw_rows(self) -> None:
+        for entry in self.config["files"]:
+            name = entry["file"]
+            if name.endswith(".parquet") and not HAS_PYARROW:
+                continue
+            with self.subTest(file=name):
+                df = read_file_by_format(get_input_path(self.config, name), self.config)
+                self.assertEqual(list(df.columns), EXPECTED_COLUMNS)
+                self.assertEqual(len(df), entry["raw_records"])
+                self.assertEqual(df[SOURCE_RECORD_COLUMN].iloc[0], 1)
+                self.assertEqual(df[SOURCE_RECORD_COLUMN].iloc[-1], entry["raw_records"])
+ 
+    def test_csv_values_are_strings_and_xlsx_values_are_native(self) -> None:
+        csv_df = read_file_by_format(DATA_DIR / "country_records.csv", self.config)
+        xlsx_df = read_file_by_format(DATA_DIR / "country_records.xlsx", self.config)
+        self.assertIsInstance(csv_df["year"].iloc[0], str)
+        self.assertNotIsInstance(xlsx_df["year"].iloc[0], str)
+ 
+    def test_conflicting_key_file_still_loads(self) -> None:
+        df = read_file_by_format(DATA_DIR / "conflicting_key.csv", self.config)
+        self.assertEqual(len(df), 1705)
+        self.assertEqual(int(df.duplicated(["country", "year"]).sum()), 1)
+ 
+    def test_missing_column_file_fails(self) -> None:
+        with self.assertRaisesRegex(MissingColumnError, "pop"):
+            read_file_by_format(DATA_DIR / "missing_column.csv", self.config)
+ 
+    def test_unsupported_file_fails(self) -> None:
+        with self.assertRaises(UnsupportedFormatError):
+            read_file_by_format(DATA_DIR / "unsupported.txt", self.config)
+ 
+ 
+if __name__ == "__main__":
+    unittest.main()
