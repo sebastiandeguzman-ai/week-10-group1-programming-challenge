@@ -166,3 +166,62 @@ def _column_mapping(config: Mapping[str, Any], fmt: str) -> dict[str, str]:
         )
     return mapping
 
+
+# Maps -------------------------------------------------------------------------
+def _require_file(file_path: str | Path) -> Path:
+    """Return ``file_path`` as a ``Path`` or raise if it is not a file."""
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Input file not found: {path}")
+    return path
+
+
+def _norm(name: Any) -> str:
+    """Normalise a header for matching (trim, collapse spaces, casefold)."""
+    return " ".join(str(name).lstrip("\ufeff").split()).casefold()
+
+
+def _build_header_map(
+    raw_columns: Sequence[str], mapping: Mapping[str, str], source: str
+) -> dict[str, str]:
+    """Map raw headers to canonical names; ignore all other headers."""
+    lookup = {_norm(col): col for col in CANONICAL_COLUMNS}
+    lookup.update({_norm(raw): canon for raw, canon in mapping.items()})
+    header_map: dict[str, str] = {}
+    claimed: dict[str, str] = {}
+    for raw in raw_columns:
+        canon = lookup.get(_norm(raw))
+        if canon is None:
+            continue
+        if canon in claimed:
+            raise InvalidFileError(
+                f"{source}: columns {claimed[canon]!r} and {raw!r} "
+                f"both map to {canon!r}."
+            )
+        claimed[canon] = raw
+        header_map[raw] = canon
+    return header_map
+
+
+def _to_canonical_frame(
+    raw: pd.DataFrame, mapping: Mapping[str, str], source: str
+) -> pd.DataFrame:
+    """Drop empty rows, map and select columns, add ``source_record``."""
+    blank = raw.isna() | raw.astype(str).apply(
+        lambda col: col.str.strip().eq("")
+    )
+    raw = raw.loc[~blank.all(axis=1)]
+
+    header_map = _build_header_map(list(raw.columns), mapping, source)
+    missing = [c for c in CANONICAL_COLUMNS if c not in header_map.values()]
+    if missing:
+        raise MissingColumnError(
+            f"{source}: missing required column(s): {', '.join(missing)}. "
+            f"Found: {', '.join(map(str, raw.columns))}."
+        )
+
+    frame = raw[list(header_map)].rename(columns=header_map)
+    frame = frame[list(CANONICAL_COLUMNS)].reset_index(drop=True)
+    frame[SOURCE_RECORD_COLUMN] = np.arange(1, len(frame) + 1, dtype="int64")
+    return frame
+
