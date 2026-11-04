@@ -25,3 +25,17 @@ dfjson = dfjson.rename(columns={
     'metadata.source_rows': 'source_rows',
     'metadata.raw_records': 'raw_records',
 })
+# PARQUET 
+dfparquet = pd.read_parquet("country_records.parquet")
+
+dfparquet = dfparquet.rename(columns={
+    'COUNTRY': "country",
+    'CONTINENT': 'continent',
+    'YEAR': 'year',
+    'LIFE_EXP': 'lifeExp',
+    'POPULATION': 'pop',
+    'GDP_PER_CAPITA': 'gdpPercap'
+})
+
+print(dfparquet.dtypes)
+print(dfparquet.head())
