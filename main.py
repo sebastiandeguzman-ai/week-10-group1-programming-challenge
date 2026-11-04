@@ -37,3 +37,42 @@ from src.exporter import (
     CANONICAL_COLUMNS,
     SCHEMA,
 )
+
+def run_pipeline(config_path: str = "config.json") -> int:
+    """Execute the complete data processing pipeline and export all required deliverables."""
+    print("=" * 60)
+    print("STARTING DATA INGESTION & ANALYTICS PIPELINE")
+    print("=" * 60)
+
+    audit_log = []
+    validation_master_list = []
+    step_counter = 1
+
+    # Setup directories
+    staging_dir = Path("staging")
+    output_dir = Path("output")
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # -------------------------------------------------------------------------
+    # 1. LOAD CONFIGURATION & BUILD RULES
+    # -------------------------------------------------------------------------
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        print(f"[!] Warning: Config file '{config_path}' not found. Operating with default settings.")
+        config = {"files": {}, "formats": {}, "column_mappings": {}}
+    else:
+        print(f"[+] Loading configuration from '{cfg_path.resolve()}'...")
+        config = load_config(cfg_path)
+
+    rules = build_rules(config)
+    log_audit_entry(
+        audit_log,
+        step=step_counter,
+        source_file=str(cfg_path),
+        operation="load_config",
+        rule="parse_manifest_and_rules",
+        rows_before=0,
+        rows_after=0,
+    )
+    step_counter += 1
