@@ -94,5 +94,140 @@ Reader = Callable[[str | Path, dict[str, Any]], pd.DataFrame]
   
  class MissingColumnError(ReaderError, ValueError):
      """Raised when a required canonical column is absent (file-level)."""
-  
+
+
+# Configuration------------------------------------------------------------------------
+def load_config(config_path: str | Path) -> dict[str, Any]:
+    """Load ``config.json`` / ``manifest.json`` into a dictionary.
  
+    The returned dictionary gets an extra ``"_config_dir"`` entry (the
+    absolute folder of the config file) so relative paths can be resolved
+    by :func:`get_input_path`.
+ 
+    Raises:
+        FileNotFoundError: The config file does not exist.
+        ConfigError: The file is not valid UTF-8 JSON or not an object.
+    """
+    path = Path(config_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Config file not found: {path}")
+    try:
+        with path.open(encoding="utf-8-sig") as handle:
+            config = json.load(handle)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"{path.name} is not valid JSON: {exc}") from exc
+    if not isinstance(config, dict):
+        raise ConfigError(f"{path.name} must contain a JSON object.")
+    config["_config_dir"] = str(path.resolve().parent)
+    return config
+ 
+ 
+def get_input_path(config: Mapping[str, Any], name: str) -> Path:
+    """Resolve an input file relative to the config folder.
+ 
+    ``name`` is a key of ``config["files"]`` (dictionary layout) or the
+    ``"file"`` value of a manifest entry (list layout).
+ 
+    Raises:
+        ConfigError: ``name`` is not listed under ``"files"``.
+    """
+    files = config.get("files", {})
+    if isinstance(files, list):
+        entry = _find_manifest_entry(files, name)
+        if entry is None:
+            raise ConfigError(f"Config has no entry {name!r} under 'files'.")
+        raw_path = entry["file"]
+    else:
+        files = _get_section(config, "files")
+        if name not in files:
+            raise ConfigError(f"Config has no entry {name!r} under 'files'.")
+        raw_path = files[name]
+    path = Path(str(raw_path))
+    base_dir = config.get("_config_dir")
+    if not path.is_absolute() and base_dir:
+        path = Path(str(base_dir)) / path
+    return path
+ 
+ 
+def _get_section(config: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    """Return ``config[key]`` as a mapping (empty if absent)."""
+    section = config.get(key, {})
+    if not isinstance(section, Mapping):
+        raise ConfigError(f"Config entry {key!r} must be a JSON object.")
+    return section
+ 
+ 
+def _find_manifest_entry(
+    files: Sequence[Any], name: str
+) -> Mapping[str, Any] | None:
+    """Return the manifest entry whose ``"file"`` matches ``name``."""
+    wanted = Path(str(name)).name.casefold()
+    for entry in files:
+        if isinstance(entry, Mapping) and "file" in entry:
+            if Path(str(entry["file"])).name.casefold() == wanted:
+                return entry
+    return None
+ 
+ 
+def _manifest_entry(
+    config: Mapping[str, Any], file_name: str | None
+) -> Mapping[str, Any]:
+    """Return the manifest entry for ``file_name`` (empty if none)."""
+    files = config.get("files")
+    if file_name is None or not isinstance(files, list):
+        return {}
+    return _find_manifest_entry(files, file_name) or {}
+ 
+ 
+def _format_settings(
+    config: Mapping[str, Any], fmt: str, file_name: str | None = None
+) -> dict[str, Any]:
+    """Merge defaults, ``formats.<fmt>`` and the file's manifest entry."""
+    user = _get_section(config, "formats").get(fmt, {})
+    if not isinstance(user, Mapping):
+        raise ConfigError(f"Config entry 'formats.{fmt}' must be an object.")
+    settings = {**DEFAULT_FORMAT_SETTINGS[fmt], **user}
+    entry = _manifest_entry(config, file_name)
+    for source_key, setting in _MANIFEST_SETTING_KEYS[fmt].items():
+        if source_key in entry:
+            settings[setting] = entry[source_key]
+    return settings
+ 
+ 
+def _column_mapping(
+    config: Mapping[str, Any], fmt: str, file_name: str | None = None
+) -> dict[str, str]:
+    """Return the raw-name -> canonical-name mapping for ``fmt``.
+ 
+    A manifest entry's ``source_to_canonical`` for ``file_name`` is merged
+    last, so it wins over the format-wide mappings.
+    """
+    section = _get_section(config, "column_mappings")
+    mapping: dict[str, str] = {
+        raw: canon for raw, canon in section.items()
+        if isinstance(canon, str)
+    }
+    specific = section.get(fmt, {})
+    if not isinstance(specific, Mapping):
+        raise ConfigError(
+            f"Config entry 'column_mappings.{fmt}' must be an object."
+        )
+    mapping.update(specific)
+    from_manifest = _manifest_entry(config, file_name).get(
+        "source_to_canonical", {}
+    )
+    if not isinstance(from_manifest, Mapping):
+        raise ConfigError(
+            f"'source_to_canonical' for {file_name!r} must be an object."
+        )
+    mapping.update(from_manifest)
+    unknown = {
+        raw: canon for raw, canon in mapping.items()
+        if canon not in CANONICAL_COLUMNS
+    }
+    if unknown:
+        raise ConfigError(
+            f"Column mapping targets unknown canonical names: {unknown}. "
+            f"Valid names: {', '.join(CANONICAL_COLUMNS)}."
+        )
+    return mapping
