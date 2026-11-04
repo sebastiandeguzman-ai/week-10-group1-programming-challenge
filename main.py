@@ -154,3 +154,33 @@ def run_pipeline(config_path: str = "config.json") -> int:
     if not all_clean_records:
         print("[!] Error: No valid records passed validation across all input files.")
         return 1
+
+# -------------------------------------------------------------------------
+    # 3. DEDUPLICATION & CONFLICT RESOLUTION
+    # -------------------------------------------------------------------------
+    print("\n[+] Performing cross-source deduplication & conflict resolution...")
+    rows_before_dedup = len(all_clean_records)
+    unique_records, _ = remove_duplicates(all_clean_records, source_file="aggregate")
+    
+    try:
+        check_conflicts(unique_records)
+    except Exception as conf_err:
+        print(f"[!] Critical Conflict Error: {conf_err}")
+        return 1
+
+    sorted_clean = sort_records(unique_records)
+    canonical_df = pd.DataFrame(sorted_clean)
+    canonical_df = canonical_df.loc[:, CANONICAL_COLUMNS].astype(SCHEMA).reset_index(drop=True)
+
+    log_audit_entry(
+        audit_log,
+        step=step_counter,
+        source_file="cross_source_aggregate",
+        operation="deduplicate_and_sort",
+        rule="remove_exact_duplicates_and_sort",
+        rows_before=rows_before_dedup,
+        rows_after=len(canonical_df),
+    )
+    step_counter += 1
+
+    print(f"    Total Canonical Dataset: {len(canonical_df)} rows")
