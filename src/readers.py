@@ -411,3 +411,41 @@ def _unique_headers(cells: Sequence[Any]) -> list[str]:
         seen[name] = count + 1
         headers.append(name if count == 0 else f"{name}.{count}")
     return headers
+
+# Dispatcher----------------------------------------------------------------
+_READERS: dict[str, Reader] = {
+    ".csv": read_csv_records,
+    ".xlsx": read_excel_records,
+}
+ 
+ 
+def register_reader(extension: str, reader: Reader) -> None:
+    """Register ``reader`` for ``extension``."""
+    ext = extension.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        raise ValueError(
+            f"Unsupported extension {extension!r}; "
+            f"expected one of {SUPPORTED_EXTENSIONS}."
+        )
+    _READERS[ext] = reader
+ 
+ 
+def read_file_by_format(
+    file_path: str | Path, config: dict[str, Any]
+) -> pd.DataFrame:
+    """Read ``file_path`` with the reader matching its extension."""
+    path = _require_file(file_path)
+    ext = path.suffix.lower()
+    reader = _READERS.get(ext)
+    if reader is not None:
+        return reader(path, config)
+    if ext in SUPPORTED_EXTENSIONS:
+        raise UnsupportedFormatError(
+            f"No reader registered for {ext!r} files "
+            f"(see register_reader)."
+        )
+    shown = ext if ext else "(none)"
+    raise UnsupportedFormatError(
+        f"Unsupported file extension {shown!r} for {path.name}; "
+        f"supported: {', '.join(SUPPORTED_EXTENSIONS)}."
+    )
