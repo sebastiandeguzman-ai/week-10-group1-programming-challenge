@@ -65,3 +65,24 @@ def test_staging_publish_isolation(self):
         self.assertTrue((self.output_dir / "canonical.xlsx").is_file())
         self.assertTrue((self.output_dir / "canonical.json").is_file())
         self.assertTrue((self.output_dir / "canonical.parquet").is_file())
+        
+def test_corrupted_export_fails_verification(self):
+        """Verifies that altered export file values fail round-trip validation."""
+        # Export valid sample DataFrame to staging
+        export_canonical_formats(self.sample_df, self.staging_dir)
+        csv_path = self.staging_dir / "canonical.csv"
+
+        # Introduce deliberate numeric corruption into exported CSV file
+        df_corrupt = pd.read_csv(csv_path)
+        df_corrupt.loc[0, "gdpPercap"] = 999999.99
+        df_corrupt.to_csv(csv_path, index=False)
+
+        # Execute reload validation and assert failure detection
+        all_passed, records = reload_and_compare_exports(self.sample_df, self.staging_dir)
+
+        # Validation must return False when exported data is altered
+        self.assertFalse(all_passed)
+
+
+if __name__ == "__main__":
+    unittest.main()
