@@ -56,8 +56,13 @@ DEFAULT_FORMAT_SETTINGS: dict[str, dict[str, Any]] = {
         "sheet_name": "observations",
         "skip_sheets": ["Readme"],
     },
+    "json": {
+        "encoding": "utf-8",
+        "record_path": "records",
+    },
+    "parquet": {},
 }
- 
+
 # Manifest entry key -> reader setting name, per format.
 _MANIFEST_SETTING_KEYS: dict[str, dict[str, str]] = {
     "csv": {
@@ -70,30 +75,35 @@ _MANIFEST_SETTING_KEYS: dict[str, dict[str, str]] = {
         "sheet_name": "sheet_name",
         "skip_sheets": "skip_sheets",
     },
+    "json": {
+        "encoding": "encoding",
+        "record_path": "record_path",
+    },
+    "parquet": {},
 }
  
 Reader = Callable[[str | Path, dict[str, Any]], pd.DataFrame]
 
- 
- # Exceptions---------------------------------------------------------------------------
- class ReaderError(Exception):
-     """Base class for all errors raised by the readers."""
-  
-  
- class ConfigError(ReaderError):
-     """Raised when the configuration file is unreadable or malformed."""
-  
-  
- class UnsupportedFormatError(ReaderError):
-     """Raised when no reader exists for a file's extension."""
-  
-  
- class InvalidFileError(ReaderError):
-     """Raised when a file exists but cannot be parsed as its format."""
-  
-  
- class MissingColumnError(ReaderError, ValueError):
-     """Raised when a required canonical column is absent (file-level)."""
+
+# Exceptions ---------------------------------------------------------------------
+class ReaderError(Exception):
+    """Base class for all errors raised by the readers."""
+
+
+class ConfigError(ReaderError):
+    """Raised when the configuration file is unreadable or malformed."""
+
+
+class UnsupportedFormatError(ReaderError):
+    """Raised when no reader exists for a file's extension."""
+
+
+class InvalidFileError(ReaderError):
+    """Raised when a file exists but cannot be parsed as its format."""
+
+
+class MissingColumnError(ReaderError, ValueError):
+    """Raised when a required canonical column is absent (file-level)."""
 
 
 # Configuration------------------------------------------------------------------------
@@ -337,8 +347,106 @@ def read_csv_records(
     return _to_canonical_frame(
         raw, _column_mapping(config, "csv", path.name), path.name
     )
- 
- 
+
+
+# JSON -----------------------------------------------------------------------
+def _resolve_record_path(value: Any, path: str | Sequence[str]) -> Any:
+    """Follow a dotted or list-style record path through nested JSON."""
+    if isinstance(path, str):
+        parts = [part for part in path.split(".") if part]
+    else:
+        parts = [part for part in path if part]
+
+    current = value
+    for part in parts:
+        if isinstance(current, Mapping):
+            if part not in current:
+                return None
+            current = current[part]
+        else:
+            return None
+    return current
+
+
+def read_json_records(
+    file_path: str | Path, config: dict[str, Any]
+) -> pd.DataFrame:
+    """Read a JSON array/object of records into canonical, uncast records."""
+    path = _require_file(file_path)
+    settings = _format_settings(config, "json", path.name)
+
+    try:
+        with path.open(encoding=settings.get("encoding", "utf-8")) as handle:
+            payload = json.load(handle)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise InvalidFileError(f"{path.name}: cannot read JSON ({exc}).") from exc
+
+    record_path = settings.get("record_path", "records")
+    records = _resolve_record_path(payload, record_path)
+    if records is None:
+        raise InvalidFileError(
+            f"{path.name}: JSON does not contain record path {record_path!r}."
+        )
+    if isinstance(records, Mapping):
+        records = [records]
+    if not isinstance(records, Sequence) or isinstance(
+        records, (str, bytes, bytearray)
+    ):
+        raise InvalidFileError(
+            f"{path.name}: JSON record path {record_path!r} is not a list of objects."
+        )
+
+    rows: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            raise InvalidFileError(
+                f"{path.name}: JSON record {index} is not an object."
+            )
+        row: dict[str, Any] = {}
+        for section_name in ("identity", "measures"):
+            section = record.get(section_name)
+            if section is None:
+                continue
+            if not isinstance(section, Mapping):
+                raise InvalidFileError(
+                    f"{path.name}: JSON record {index} field {section_name!r} must be an object."
+                )
+            for key, value in section.items():
+                row[f"{section_name}.{key}"] = value
+        if not row:
+            row = dict(record)
+        rows.append(row)
+
+    if not rows:
+        raise InvalidFileError(f"{path.name}: JSON file contains no records.")
+
+    raw = pd.DataFrame(rows, dtype=object)
+    return _to_canonical_frame(
+        raw, _column_mapping(config, "json", path.name), path.name
+    )
+
+
+# Parquet ---------------------------------------------------------------------
+def read_parquet_records(
+    file_path: str | Path, config: dict[str, Any]
+) -> pd.DataFrame:
+    """Read a parquet table into canonical, uncast records."""
+    path = _require_file(file_path)
+    _format_settings(config, "parquet", path.name)
+
+    try:
+        raw = pd.read_parquet(path)
+    except (ImportError, ValueError, OSError) as exc:
+        raise InvalidFileError(f"{path.name}: cannot read parquet ({exc}).") from exc
+
+    if raw.empty:
+        raise InvalidFileError(f"{path.name}: parquet file is empty.")
+
+    return _to_canonical_frame(
+        raw, _column_mapping(config, "parquet", path.name), path.name
+    )
+
+
 # ---------------------------------------------------------------------------
 # Excel
 # ---------------------------------------------------------------------------
@@ -416,6 +524,8 @@ def _unique_headers(cells: Sequence[Any]) -> list[str]:
 _READERS: dict[str, Reader] = {
     ".csv": read_csv_records,
     ".xlsx": read_excel_records,
+    ".json": read_json_records,
+    ".parquet": read_parquet_records,
 }
  
  
