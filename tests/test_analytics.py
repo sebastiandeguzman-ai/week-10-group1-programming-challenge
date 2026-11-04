@@ -9,9 +9,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-# Allow importing from src.analytics when src is inside dsa4153_project/src
-import os
-sys.path.insert(0, os.path.abspath("dsa4153_project"))
+# Point to the root folder where 'src' now lives
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.analytics import (
     CANONICAL_COLS,
