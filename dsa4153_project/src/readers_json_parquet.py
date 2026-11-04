@@ -14,3 +14,14 @@ dfjson = pd.json_normalize(
         ["metadata", "raw_records"]
     ]
 )
+dfjson = dfjson.rename(columns={
+    'identity.country': 'country',
+    'identity.continent': 'continent',
+    'identity.year': 'year',
+    'measures.lifeExp': 'lifeExp',
+    'measures.pop': 'pop',
+    'measures.gdpPercap': 'gdpPercap',
+    'metadata.purpose': 'purpose',
+    'metadata.source_rows': 'source_rows',
+    'metadata.raw_records': 'raw_records',
+})
