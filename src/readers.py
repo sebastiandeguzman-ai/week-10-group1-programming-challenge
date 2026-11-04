@@ -59,3 +59,25 @@ DEFAULT_FORMAT_SETTINGS: dict[str, dict[str, Any]] = {
 }
 
 Reader = Callable[[str | Path, dict[str, Any]], pd.DataFrame]
+
+
+# Exceptions ----------------------------------------------------
+class ReaderError(Exception):
+    """Base class for all errors raised by the readers."""
+
+
+class ConfigError(ReaderError):
+    """Raised when the configuration file is unreadable or malformed."""
+
+
+class UnsupportedFormatError(ReaderError):
+    """Raised when no reader exists for a file's extension."""
+
+
+class InvalidFileError(ReaderError):
+    """Raised when a file exists but cannot be parsed as its format."""
+
+
+class MissingColumnError(ReaderError, ValueError):
+    """Raised when a required canonical column is absent (file-level)."""
+
