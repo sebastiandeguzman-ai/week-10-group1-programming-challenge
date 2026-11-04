@@ -1,5 +1,7 @@
+import platform
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -19,10 +21,78 @@ from src.validator import (  # noqa: E402
     validate_table,
 )
 
+REPORT_PATH = Path(__file__).resolve().parents[1] / "test_validator.txt"
+_OUTCOMES: list[dict] = []   # one entry per test, filled while the tests run
+
+
+class RecordedTestCase(unittest.TestCase):
+
+    def run(self, result=None):
+        if result is None:
+            return super().run(result)
+        before = (len(result.failures), len(result.errors), len(result.skipped))
+        outcome = super().run(result)
+        after = (len(result.failures), len(result.errors), len(result.skipped))
+        details = ""
+        if after[1] > before[1]:
+            status, details = "ERROR", result.errors[-1][1]
+        elif after[0] > before[0]:
+            status, details = "FAIL", result.failures[-1][1]
+        elif after[2] > before[2]:
+            status = "SKIP"
+        else:
+            status = "PASS"
+        doc = (self._testMethodDoc or "").strip().splitlines()
+        _OUTCOMES.append({
+            "group": type(self).__name__,
+            "name": self._testMethodName,
+            "doc": doc[0] if doc else "",
+            "status": status,
+            "details": details,
+        })
+        return outcome
+
+
+def write_report(path: Path = REPORT_PATH) -> None:
+    counts = {s: sum(o["status"] == s for o in _OUTCOMES)
+              for s in ("PASS", "FAIL", "ERROR", "SKIP")}
+    lines = [
+        "VALIDATOR TEST REPORT (tests/test_validator.py)",
+        "=" * 60,
+        f"Run at : {datetime.now():%Y-%m-%d %H:%M:%S}",
+        f"Python : {platform.python_version()}   pandas: {pd.__version__}",
+        f"Module : src/validator.py",
+        "",
+    ]
+    group = None
+    for item in _OUTCOMES:
+        if item["group"] != group:
+            group = item["group"]
+            lines += ["", group, "-" * len(group)]
+        lines.append(f"  [{item['status']:<5}] {item['name']}")
+        if item["doc"]:
+            lines.append(f"          {item['doc']}")
+        if item["details"]:
+            lines += ["          " + ln for ln in item["details"].rstrip().splitlines()]
+    lines += [
+        "", "=" * 60,
+        f"TOTAL: {len(_OUTCOMES)} checks | PASS {counts['PASS']} | "
+        f"FAIL {counts['FAIL']} | ERROR {counts['ERROR']} | SKIP {counts['SKIP']}",
+        "OVERALL RESULT: " + ("PASSED" if not (counts["FAIL"] or counts["ERROR"]) and _OUTCOMES else "FAILED"),
+        "",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def tearDownModule() -> None:
+    write_report()
+
+
 RULES = build_rules({})  # defaults: 1952-2007 step 5, five continents, lifeExp <= 120
 
 
 def raw(**overrides) -> dict:
+    """Return one valid all-string record, with optional field overrides."""
     base = {"country": "Philippines", "continent": "Asia", "year": "2007",
             "lifeExp": "71.688", "pop": "91077287", "gdpPercap": "3190.481016"}
     base.update(overrides)
@@ -33,7 +103,7 @@ def frame(*records: dict) -> pd.DataFrame:
     return pd.DataFrame(list(records), columns=list(CANONICAL_COLUMNS))
 
 
-class ValidateRecordTests(unittest.TestCase):
+class ValidateRecordTests(RecordedTestCase):
 
     def test_valid_record_is_typed_and_trimmed(self):
         clean, reason = validate_record(raw(country="  Philippines  ", continent=" Asia "), RULES)
@@ -102,7 +172,7 @@ class ValidateRecordTests(unittest.TestCase):
         self.assertEqual(validate_record(raw(lifeExp="71.688"), strict)[1], "out_of_range:lifeExp")
 
 
-class ValidateTableTests(unittest.TestCase):
+class ValidateTableTests(RecordedTestCase):
 
     def test_source_record_is_one_based_and_not_renumbered(self):
         df = frame(
@@ -158,7 +228,7 @@ class ValidateTableTests(unittest.TestCase):
         self.assertEqual(result.clean[0]["pop"], 91077287)
 
 
-class DuplicateTests(unittest.TestCase):
+class DuplicateTests(RecordedTestCase):
 
     def test_exact_duplicates_are_removed_and_logged(self):
         df = frame(raw(year="1952"), raw(year="1957"), raw(year="1952"), raw(year="1952"))
@@ -189,7 +259,7 @@ class DuplicateTests(unittest.TestCase):
         self.assertEqual(cols[3:], list(CANONICAL_COLUMNS))
 
 
-class ConflictTests(unittest.TestCase):
+class ConflictTests(RecordedTestCase):
 
     def test_conflicting_keys_raise(self):
         df = frame(raw(), raw(pop="91077288"))
@@ -214,7 +284,7 @@ class ConflictTests(unittest.TestCase):
         self.assertEqual(len(result.quarantine), 1)
 
 
-class PipelineTests(unittest.TestCase):
+class PipelineTests(RecordedTestCase):
 
     def test_reconciliation_raw_equals_rejected_plus_duplicates_plus_clean(self):
         df = frame(
