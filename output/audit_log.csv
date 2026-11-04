@@ -1,0 +1,8 @@
+step,source_file,operation,rule,rows_before,rows_after
+1,config.json,load_config,parse_manifest_and_rules,0,0
+2,/Users/sebastianmiguele.deguzman/week-10-group1-programming-challenge-4/country_records.json,ingest_and_validate,type_and_range_check,1712,1704
+3,/Users/sebastianmiguele.deguzman/week-10-group1-programming-challenge-4/country_records.parquet,ingest_and_validate,type_and_range_check,1712,1704
+4,cross_source_aggregate,deduplicate_and_sort,remove_exact_duplicates_and_sort,3408,1704
+asia_selected_year,canonical,analytics,year=2007,1704,33
+country_history,canonical,analytics,year=2007,1704,12
+population_index,canonical,analytics,year=2007,1704,3
