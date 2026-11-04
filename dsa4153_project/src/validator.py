@@ -29,12 +29,15 @@ DEFAULT_RULES: dict = {
 
 
 class ConflictingKeyError(Exception):
-    
-
+    """Raised when two valid rows share (country, year) but disagree."""
+ 
+ 
 class MissingColumnError(ValueError):
-
-
+    """Raised when a required canonical column is absent (file-level error)."""
+ 
+ 
 class ValidationResult:
+    """Holds everything produced while processing one input file."""
 
     def __init__(self, source_file: str) -> None:
         self.source_file: str = source_file
