@@ -79,3 +79,83 @@ def export_canonical_formats(df, target_dir):
     df.to_parquet(paths["parquet"], engine="pyarrow", index=False)
 
     return paths
+
+def reapply_schema(df):
+    """
+    Re-applies canonical column ordering and strict dtypes upon reloading exported files.
+    
+    Parameters:
+        df (pd.DataFrame): Raw reloaded dataset dataframe.
+        
+    Returns:
+        pd.DataFrame: Schema-compliant dataframe with enforced column types.
+    """
+    # Enforce strict column order selection
+    df_clean = df.loc[:, CANONICAL_COLUMNS].copy()
+    # Cast dataframe columns to target SCHEMA dictionary dtypes
+    return df_clean.astype(SCHEMA)
+
+
+def reload_and_compare_exports(df_canonical, staging_dir, abs_tol=1e-8):
+    """
+    Reloads exported files, re-applies schema, and asserts equality against pre-export table.
+    
+    Parameters:
+        df_canonical (pd.DataFrame): Baseline canonical dataframe prior to export.
+        staging_dir (str/Path): Staging directory containing exported files.
+        abs_tol (float): Absolute tolerance for floating point comparisons (1e-8).
+        
+    Returns:
+        tuple: (all_passed: bool, validation_records: list of dicts)
+    """
+    staging_path = Path(staging_dir)
+    validation_records = []
+    all_passed = True
+    
+    # Establish baseline expected dataframe with reapplied schema
+    df_expected = reapply_schema(df_canonical)
+
+    # Define format loaders using pathlib Path objects
+    loaders = {
+        "csv_roundtrip": lambda: pd.read_csv(staging_path / "canonical.csv", encoding="utf-8"),
+        "xlsx_roundtrip": lambda: pd.read_excel(staging_path / "canonical.xlsx", sheet_name="observations", engine="openpyxl"),
+        "json_roundtrip": lambda: pd.read_json(staging_path / "canonical.json", orient="records"),
+        "parquet_roundtrip": lambda: pd.read_parquet(staging_path / "canonical.parquet", engine="pyarrow"),
+    }
+
+    # Execute round-trip reload validation across all four file formats
+    for check_name, load_fn in loaders.items():
+        try:
+            # Reload raw data and re-apply schema contract
+            reloaded_raw = load_fn()
+            reloaded_df = reapply_schema(reloaded_raw)
+
+            # Assert strict frame equality with 1e-8 absolute tolerance and 0 relative tolerance
+            pd.testing.assert_frame_equal(
+                df_expected, 
+                reloaded_df, 
+                check_exact=False, 
+                atol=abs_tol, 
+                rtol=0
+            )
+
+            # Append successful validation check result
+            validation_records.append({
+                "check": f"roundtrip_{check_name}",
+                "expected": f"Exact match within tolerance {abs_tol}",
+                "actual": "Matched pre-export canonical table",
+                "tolerance": abs_tol,
+                "pass": True
+            })
+        except Exception as error:
+            # Flag failure if reloaded data violates tolerance or schema match
+            all_passed = False
+            validation_records.append({
+                "check": f"roundtrip_{check_name}",
+                "expected": f"Exact match within tolerance {abs_tol}",
+                "actual": f"Mismatch error: {str(error)}",
+                "tolerance": abs_tol,
+                "pass": False
+            })
+
+    return all_passed, validation_records
