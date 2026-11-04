@@ -159,3 +159,22 @@ def reload_and_compare_exports(df_canonical, staging_dir, abs_tol=1e-8):
             })
 
     return all_passed, validation_records
+
+def publish_staging_to_output(staging_dir, output_dir):
+    """
+    Atomically transfers validated files from staging directory to output destination.
+    
+    Parameters:
+        staging_dir (str/Path): Temporary staging directory with verified exports.
+        output_dir (str/Path): Final output publication directory.
+    """
+    staging_path = Path(staging_dir)
+    output_path = Path(output_dir)
+    
+    # Create final output folder path
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Read binary bytes from staging and write directly to output folder
+    for item in staging_path.iterdir():
+        if item.is_file():
+            (output_path / item.name).write_bytes(item.read_bytes())
