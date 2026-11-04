@@ -289,4 +289,125 @@ def _to_canonical_frame(
     frame = frame[list(CANONICAL_COLUMNS)].reset_index(drop=True)
     frame[SOURCE_RECORD_COLUMN] = np.arange(1, len(frame) + 1, dtype="int64")
     return frame
+
+ # CSV-----------------------------------------------------------------------
+def read_csv_records(
+    file_path: str | Path, config: dict[str, Any]
+) -> pd.DataFrame:
+    """Read a delimited text file into canonical, uncast records."""
+    path = _require_file(file_path)
+    settings = _format_settings(config, "csv", path.name)
  
+    try:
+        text = path.read_text(encoding=settings["encoding"])
+    except UnicodeDecodeError as exc:
+        raise InvalidFileError(
+            f"{path.name}: cannot decode as {settings['encoding']} ({exc})."
+        ) from exc
+    except LookupError as exc:
+        raise ConfigError(
+            f"Unknown CSV encoding {settings['encoding']!r}."
+        ) from exc
+ 
+    text = text.removeprefix("\ufeff").removeprefix("\u00ef\u00bb\u00bf")
+ 
+    lines = text.split("\n")
+    prefix = settings.get("comment_prefix")
+    if prefix:
+        lines = [ln for ln in lines if not ln.lstrip().startswith(prefix)]
+ 
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", pd.errors.ParserWarning)
+            raw = pd.read_csv(
+                io.StringIO("\n".join(lines)),
+                sep=settings["delimiter"],
+                dtype=object,
+                keep_default_na=False,
+                na_filter=False,
+                index_col=False,
+            )
+    except pd.errors.EmptyDataError as exc:
+        raise InvalidFileError(
+            f"{path.name}: no header row after removing comment lines."
+        ) from exc
+    except (pd.errors.ParserError, pd.errors.ParserWarning) as exc:
+        raise InvalidFileError(f"{path.name}: malformed CSV ({exc}).") from exc
+ 
+    return _to_canonical_frame(
+        raw, _column_mapping(config, "csv", path.name), path.name
+    )
+ 
+ 
+# ---------------------------------------------------------------------------
+# Excel
+# ---------------------------------------------------------------------------
+def read_excel_records(
+    file_path: str | Path, config: dict[str, Any]
+) -> pd.DataFrame:
+    """Read the observations sheet of an ``.xlsx`` workbook."""
+    path = _require_file(file_path)
+    settings = _format_settings(config, "excel", path.name)
+ 
+    try:
+        workbook = load_workbook(path, data_only=True)
+    except (zipfile.BadZipFile, InvalidFileException) as exc:
+        raise InvalidFileError(
+            f"{path.name}: not a valid .xlsx workbook."
+        ) from exc
+    try:
+        sheet_name = _select_sheet(workbook.sheetnames, settings, path.name)
+        rows = list(workbook[sheet_name].iter_rows(values_only=True))
+    finally:
+        workbook.close()
+ 
+    if not rows:
+        raise InvalidFileError(f"{path.name}: sheet {sheet_name!r} is empty.")
+ 
+    headers = _unique_headers(rows[0])
+    width = len(headers)
+    data = [
+        list(row[:width]) + [None] * (width - len(row))
+        for row in rows[1:]
+    ]
+    raw = pd.DataFrame(data, columns=headers, dtype=object)
+ 
+    return _to_canonical_frame(
+        raw, _column_mapping(config, "excel", path.name), path.name
+    )
+ 
+ 
+def _select_sheet(
+    sheet_names: Sequence[str], settings: Mapping[str, Any], source: str
+) -> str:
+    """Pick the observations sheet, ignoring the skipped sheets."""
+    skip_setting = settings.get("skip_sheets", [])
+    if isinstance(skip_setting, str):
+        skip_setting = [skip_setting]
+    skip = {_norm(name) for name in skip_setting}
+    candidates = [name for name in sheet_names if _norm(name) not in skip]
+ 
+    wanted = settings.get("sheet_name")
+    if wanted:
+        for name in candidates:
+            if _norm(name) == _norm(wanted):
+                return name
+    if len(candidates) == 1:
+        return candidates[0]
+    raise InvalidFileError(
+        f"{source}: cannot identify the observations sheet "
+        f"(wanted {wanted!r}; usable sheets: {candidates or 'none'})."
+    )
+ 
+ 
+def _unique_headers(cells: Sequence[Any]) -> list[str]:
+    """Turn header cells into unique strings (blank -> ``Unnamed: n``)."""
+    seen: dict[str, int] = {}
+    headers: list[str] = []
+    for index, cell in enumerate(cells):
+        text = "" if cell is None else str(cell).strip()
+        name = text or f"Unnamed: {index}"
+        count = seen.get(name, 0)
+        seen[name] = count + 1
+        headers.append(name if count == 0 else f"{name}.{count}")
+    return headers
