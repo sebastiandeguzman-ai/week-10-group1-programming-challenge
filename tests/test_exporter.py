@@ -37,3 +37,17 @@ class TestExporterAndStaging(unittest.TestCase):
         # Remove root temporary workspace folder
         if self.test_root.exists():
             self.test_root.rmdir()
+
+def test_export_and_roundtrip_verification(self):
+        """Verifies that all 4 formats export cleanly and pass round-trip reload comparisons."""
+        # Execute multi-format export into staging directory
+        export_canonical_formats(self.sample_df, self.staging_dir)
+
+        # Reload all four formats and assert frame equality against pre-export sample data
+        all_passed, records = reload_and_compare_exports(self.sample_df, self.staging_dir)
+
+        # Assert round-trip validation overall status is True
+        self.assertTrue(all_passed)
+
+        # Assert validation records were generated for all 4 export formats
+        self.assertEqual(len(records), 4)
