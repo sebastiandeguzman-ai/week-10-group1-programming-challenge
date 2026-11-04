@@ -3,7 +3,7 @@
 from pathlib import Path
 import unittest
 import pandas as pd
-from dsa4153_project.src.exporter import export_canonical_formats, reload_and_compare_exports, publish_staging_to_output
+from src.exporter import export_canonical_formats, reload_and_compare_exports, publish_staging_to_output
 
 class TestExporterAndStaging(unittest.TestCase):
 
