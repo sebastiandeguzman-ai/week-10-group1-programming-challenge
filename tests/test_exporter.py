@@ -51,3 +51,17 @@ def test_export_and_roundtrip_verification(self):
 
         # Assert validation records were generated for all 4 export formats
         self.assertEqual(len(records), 4)
+
+def test_staging_publish_isolation(self):
+        """Verifies that verified files copy from staging to output directory."""
+        # Export files to isolated staging directory
+        export_canonical_formats(self.sample_df, self.staging_dir)
+
+        # Publish verified staging files to final output folder
+        publish_staging_to_output(self.staging_dir, self.output_dir)
+
+        # Assert all 4 canonical export files exist in destination directory
+        self.assertTrue((self.output_dir / "canonical.csv").is_file())
+        self.assertTrue((self.output_dir / "canonical.xlsx").is_file())
+        self.assertTrue((self.output_dir / "canonical.json").is_file())
+        self.assertTrue((self.output_dir / "canonical.parquet").is_file())
