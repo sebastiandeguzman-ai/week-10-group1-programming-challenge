@@ -39,3 +39,27 @@ dfparquet = dfparquet.rename(columns={
 
 print(dfparquet.dtypes)
 print(dfparquet.head())
+
+# CHECKING
+REQUIRED_COLUMNS = [
+    'country',
+    'continent',
+    'year',
+    'lifeExp',
+    'pop',
+    'gdpPercap'
+]
+
+def check_missing_columns(df):
+    missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
+
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    return True
+
+def check_record_order(original_df, normalized_df):
+    return original_df.index.equals(normalized_df.index)
+
+check_missing_columns(dfjson)
+check_missing_columns(dfparquet)
