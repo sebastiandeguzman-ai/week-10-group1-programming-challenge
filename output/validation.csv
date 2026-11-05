@@ -1,0 +1,14 @@
+check,expected,actual,tolerance,pass
+reconciliation_country_records.json,1712,1712,0.0,True
+reconciliation_country_records.parquet,1712,1712,0.0,True
+roundtrip_csv_roundtrip,Exact match within tolerance 1e-08,Matched pre-export canonical table,1e-08,True
+roundtrip_xlsx_roundtrip,Exact match within tolerance 1e-08,Matched pre-export canonical table,1e-08,True
+roundtrip_json_roundtrip,Exact match within tolerance 1e-08,Matched pre-export canonical table,1e-08,True
+roundtrip_parquet_roundtrip,Exact match within tolerance 1e-08,Matched pre-export canonical table,1e-08,True
+agreement_csv_vs_xlsx,0.0,0.0,1e-08,True
+agreement_csv_vs_json,0.0,0.0,1e-08,True
+agreement_csv_vs_parquet,0.0,0.0,1e-08,True
+asia_pop_2007,3811953827,3811953827,0.0,True
+numpy_broadcast_vs_loop,0.0,0.0,1e-08,True
+asia_2007_expected_pop,3811953827,3811953827,0.0,True
+ph_2007_expected_pop,91077287,91077287,0.0,True
