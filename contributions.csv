@@ -1,0 +1,6 @@
+member,git_identity,branch,code_symbol,code_path,code_commit,test_path,review_reference
+Sebastain De Guzman,sebpogeh123,feature/exporter-cli,export_data,src/exporter.py,9a4c760,tests/test_exporter.py,Reviewed Darylle Balbin (feature/readers)
+Venice Cartera,venicea1,feature/json-parquet,read_json_parquet,src/readers_json_parquet.py,ed9f2ee,tests/test_json_parquet.py,Reviewed Rhianne Granados (feature/validator-quarantine)
+Rhianne Granados,rhianneadreanagranados-svg,feature/validator-quarantine,validate_data,src/validator.py,62ac449,tests/test_validator.py,Reviewed Charlize Fetalcorin (feature/analytics)
+Charlize Fetalcorin,charlizefetalcorin,feature/analytics,run_analytics,src/analytics.py,e66b1e4,tests/test_analytics.py,Reviewed Sebastain De Guzman (feature/exporter-cli)
+Darylle Balbin,twix-dvb,feature/readers,read_csv_excel,src/readers.py,644e1a4,tests/test_readers.py,Reviewed Venice Cartera (feature/json-parquet)
