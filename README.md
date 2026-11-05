@@ -14,7 +14,7 @@ A Python pipeline that recovers, validates, and reconciles country records from 
 - **Duplicate Copies per File:** 2
 - **Expected Canonical Records:** 1,704
 
-The dataset is provided through Canvas and is **not included** in this repository.
+The dataset is provided through Canvas and is included in this repository.
 
 ## Requirements
 
@@ -49,13 +49,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Download the dataset
-
-1. Download `DSA4153_Week10_Group_Task_Inputs.zip` from Canvas.
-2. Extract the files into the `data/` folder.
-3. Make sure the four input files and `manifest.json` are in the correct location.
-
-### 5. Run the pipeline
+### 4. Run the pipeline
 
 Run this from the **repository root**:
 
