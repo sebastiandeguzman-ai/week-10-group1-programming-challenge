@@ -1,0 +1,150 @@
+{
+  "dataset": "Gapminder historical teaching snapshot with deliberately appended defects",
+  "source_url": "https://raw.githubusercontent.com/jennybc/gapminder/main/inst/extdata/gapminder.tsv",
+  "documentation_url": "https://jennybc.github.io/gapminder/reference/gapminder.html",
+  "original_sha256": "f74275b4a2f4a7c8e3a09a752f9d6e43d1759d78d5cbfdebaaa3e1a6efc68f78",
+  "original_scope": "142 countries, 1952\u20132007 in five-year steps; not current observations",
+  "canonical_schema": {
+    "country": "string",
+    "continent": "string",
+    "year": "int64",
+    "lifeExp": "float64",
+    "pop": "int64",
+    "gdpPercap": "float64"
+  },
+  "canonical_order": [
+    "country",
+    "continent",
+    "year",
+    "lifeExp",
+    "pop",
+    "gdpPercap"
+  ],
+  "key": [
+    "country",
+    "year"
+  ],
+  "allowed_continents": [
+    "Africa",
+    "Americas",
+    "Asia",
+    "Europe",
+    "Oceania"
+  ],
+  "allowed_years": [
+    1952,
+    1957,
+    1962,
+    1967,
+    1972,
+    1977,
+    1982,
+    1987,
+    1992,
+    1997,
+    2002,
+    2007
+  ],
+  "units": {
+    "lifeExp": "years",
+    "pop": "persons",
+    "gdpPercap": "inflation-adjusted US dollars, following package documentation"
+  },
+  "rules": [
+    "country must be nonempty after trimming",
+    "continent must be nonempty and in the allowed set",
+    "year must be finite, integral and in allowed_years",
+    "lifeExp must be finite and greater than 0 and at most 120",
+    "pop must be finite, integral and greater than 0",
+    "gdpPercap must be finite and greater than 0"
+  ],
+  "expected_per_file": {
+    "raw_rows": 1712,
+    "rejected_rows": 6,
+    "valid_before_deduplication": 1706,
+    "exact_duplicates_removed": 2,
+    "canonical_rows": 1704
+  },
+  "controls": {
+    "countries": 142,
+    "philippines_rows": 12,
+    "asia_2007_rows": 33,
+    "asia_2007_population": 3811953827,
+    "philippines_2007_population": 91077287
+  },
+  "files": [
+    {
+      "file": "country_records.csv",
+      "format": "csv",
+      "raw_records": 1712,
+      "source_to_canonical": {
+        "CountryName": "country",
+        "ContinentName": "continent",
+        "ObservationYear": "year",
+        "LifeYears": "lifeExp",
+        "PopulationPersons": "pop",
+        "GDPPerPerson": "gdpPercap"
+      },
+      "sha256": "11567e9c8c3fbeda6115cdf0797b6d234a246e60b0d2156548088ecd30542ca8",
+      "bytes": 159589,
+      "encoding": "cp1252",
+      "separator": ";",
+      "comment_prefix": "#",
+      "ignore_columns": [
+        "export_note"
+      ]
+    },
+    {
+      "file": "country_records.xlsx",
+      "format": "xlsx",
+      "raw_records": 1712,
+      "source_to_canonical": {
+        "country_name": "country",
+        "continent_name": "continent",
+        "observation_year": "year",
+        "life_expectancy": "lifeExp",
+        "population": "pop",
+        "gdp_per_capita": "gdpPercap"
+      },
+      "sha256": "0756178ebfb07ae7adcedd07f1237bee7ef3bb95714102ca39657cde6784065e",
+      "bytes": 81018,
+      "sheet_name": "observations",
+      "engine": "openpyxl"
+    },
+    {
+      "file": "country_records.json",
+      "format": "json",
+      "raw_records": 1712,
+      "source_to_canonical": {
+        "identity.country": "country",
+        "identity.continent": "continent",
+        "identity.year": "year",
+        "measures.lifeExp": "lifeExp",
+        "measures.pop": "pop",
+        "measures.gdpPercap": "gdpPercap"
+      },
+      "sha256": "400966a74d2d19235e7d7f3091da71040d272e0d8ad0ca1213e45d0aa06306c3",
+      "bytes": 406030,
+      "encoding": "utf-8",
+      "record_path": "records",
+      "normalization": "flatten identity and measures; metadata is not a record"
+    },
+    {
+      "file": "country_records.parquet",
+      "format": "parquet",
+      "raw_records": 1712,
+      "source_to_canonical": {
+        "COUNTRY": "country",
+        "CONTINENT": "continent",
+        "YEAR": "year",
+        "LIFE_EXP": "lifeExp",
+        "POPULATION": "pop",
+        "GDP_PER_CAPITA": "gdpPercap"
+      },
+      "sha256": "7f72d4ddb71d7cc34c50782220aca4b3bd68d9f0fe87fb0022b677a30b3c449a",
+      "bytes": 56905,
+      "engine": "pyarrow",
+      "note": "Input columns are stored as strings; validate before conversion."
+    }
+  ]
+}
