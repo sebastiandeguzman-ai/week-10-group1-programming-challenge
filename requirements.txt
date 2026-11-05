@@ -1,0 +1,23 @@
+# Core Data Analysis & Manipulation
+
+# Used across src/analytics.py, src/validator.py, src/exporter.py, src/readers.py, main.py
+
+pandas>=2.0.0
+
+numpy>=1.24.0
+
+
+
+# Excel File Processing (.xlsx read/write)
+
+# Used by openpyxl in src/readers.py and pandas ExcelWriter in src/exporter.py
+
+openpyxl>=3.1.0
+
+
+
+# Parquet Binary Format Support (.parquet read/write)
+
+# Used by pyarrow engine in src/readers.py and src/exporter.py
+
+pyarrow>=12.0.0
